@@ -1,0 +1,52 @@
+project_name: UpdateHosts-Github
+env:
+  - GO111MODULE=on
+  - GOSUMDB=off
+  - GOPROXY=https://goproxy.cn,direct
+  - CGO_ENABLED=0
+before:
+  hooks:
+    - go mod tidy
+builds:
+  - id: githubhosts
+    ldflags:
+      - -s -w
+      - --extldflags "-static -fpic"
+    gcflags:
+      - -N -l
+    flags:
+      - -v
+    binary: githubhosts
+    goos:
+      - darwin
+      - linux
+      - windows
+    goarch:
+      - amd64
+checksum:
+  name_template: "{{.ProjectName}}_{{ .Version }}_checksums.txt"
+  algorithm: sha512
+archives:
+  - format: tar.gz
+    format_overrides:
+      - goos: windows
+        format: zip
+    name_template: "{{.ProjectName}}_{{.Version}}_{{.Os}}_{{.Arch}}"
+    replacements:
+      amd64: 64bit
+      386: 32bit
+      arm: arm
+      arm64: arm64
+      darwin: macos
+      linux: linux
+      windows: windows
+      openbsd: openbsd
+      netbsd: netbsd
+      freebsd: freebsd
+      dragonfly: dragonflybsd
+    files:
+      - README.md
+      - LICENSE
+source:
+  enabled: true
+  name_template: '{{ .ProjectName }}_{{.Version}}'
