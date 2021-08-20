@@ -249,7 +249,7 @@ func (p *DnsClient) Ping(ip string) time.Duration {
 		Host:     ip,
 		Port:     80,
 		Counter:  1,
-		Protocol: ping.TCP,
+		Protocol: ping.HTTPS,
 	}
 
 	pinger := ping.NewTCPing()
@@ -301,11 +301,29 @@ var githubList = pie.Strings{
 
 var cmdArgs struct {
 	HostsFile string `arg:"-h,--hosts" help:"hosts file path"`
+	Action    string `arg:"-a,--action" help:""`
 }
 
-func main() {
-	arg.MustParse(&cmdArgs)
+var client *DnsClient
 
+func Init() {
+	worker := factory.NewMaster(8, 2)
+
+	client = NewDnsClient()
+
+	lineNameserver := worker.AddLine(func(i interface{}) {
+		client.Added(i.(string))
+	})
+
+	list := pie.Strings(strings.Split(text, "\n"))
+	list.Each(func(s string) {
+		lineNameserver.Submit(s)
+	})
+
+	lineNameserver.Wait()
+}
+
+func UpdateHosts() {
 	var err error
 	var hosts *txeh.Hosts
 	if utils.FileExists(cmdArgs.HostsFile) {
@@ -326,19 +344,6 @@ func main() {
 	}
 
 	worker := factory.NewMaster(8, 2)
-
-	client := NewDnsClient()
-
-	lineNameserver := worker.AddLine(func(i interface{}) {
-		client.Added(i.(string))
-	})
-
-	list := pie.Strings(strings.Split(text, "\n"))
-	list.Each(func(s string) {
-		lineNameserver.Submit(s)
-	})
-
-	lineNameserver.Wait()
 
 	var _lock sync.Mutex
 	hostMap := map[string]string{}
@@ -361,7 +366,7 @@ func main() {
 	lineQuery.Wait()
 
 	for doamin, ip := range hostMap {
-		pterm.Printfln("%s\t%s", doamin, ip)
+		pterm.Printfln("%s\t%s", ip, doamin)
 	}
 
 	if cmdArgs.HostsFile != "" {
@@ -373,5 +378,23 @@ func main() {
 		pterm.Error.Printfln("save hosts err:%v", err)
 		return
 	}
-	time.Sleep(10)
+}
+
+func main() {
+	arg.MustParse(&cmdArgs)
+
+	switch cmdArgs.Action {
+	case "run":
+		Init()
+		UpdateHosts()
+		for {
+			select {
+			case <- time.After():
+
+			}
+		}
+	default:
+		Init()
+		UpdateHosts()
+	}
 }
