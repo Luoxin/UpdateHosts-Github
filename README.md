@@ -10,7 +10,5 @@
 
 - [x] 进行dns查询
 - [x] 筛选最快的ip
-- [ ] 写入到hosts文件
-	- [x] Linux
-	- [ ] Windows
+- [x] 写入到hosts文件
 - [ ] 以服务的方式运行
