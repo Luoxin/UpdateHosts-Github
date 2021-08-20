@@ -340,12 +340,17 @@ func main() {
 
 	lineNameserver.Wait()
 
+	var _lock sync.Mutex
+	hostMap := map[string]string{}
 	lineQuery := worker.AddLine(func(i interface{}) {
 		domain := i.(string)
 		fastIp := client.LookupIPFast(domain)
 		if fastIp != "" {
 			pterm.Info.Printfln("fastest: %v\t%v", domain, fastIp)
 			hosts.AddHost(fastIp, domain)
+			_lock.Lock()
+			hostMap[domain] = fastIp
+			_lock.Unlock()
 		} else {
 			pterm.Warning.Printfln("%v not found fast ip", domain)
 		}
@@ -354,6 +359,10 @@ func main() {
 		lineQuery.Submit(domain)
 	})
 	lineQuery.Wait()
+
+	for doamin, ip := range hostMap {
+		pterm.Printfln("%s\t%s", doamin, ip)
+	}
 
 	if cmdArgs.HostsFile != "" {
 		err = hosts.SaveAs(cmdArgs.HostsFile)
@@ -364,4 +373,5 @@ func main() {
 		pterm.Error.Printfln("save hosts err:%v", err)
 		return
 	}
+	time.Sleep(10)
 }
