@@ -6,107 +6,61 @@ import (
 	"github.com/alexflint/go-arg"
 	"github.com/cloverstd/tcping/ping"
 	"github.com/elliotchance/pie/pie"
+	"github.com/go-resty/resty/v2"
 	"github.com/letsfire/factory"
 	dotDns "github.com/ncruces/go-dns"
 	"github.com/pterm/pterm"
 	"github.com/txn2/txeh"
 	"net"
-	"strings"
 	"sync"
 	"time"
 )
 
-var text = `1.2.4.8
-223.5.5.5
-114.114.114.114
-8.8.8.8
-tls://dns.alidns.com
-https://223.5.5.5/dns-query
-tls://dns.rubyfish.cn:853
-tls://1.0.0.1:853
-tls://dns.google:853
-tls://dns.alidns.com:853
-tls://dns.cfiec.net:853
-https://2400:3200:baba::1/dns-query
-https://dns.cfiec.net/dns-query
-https://223.6.6.6/dns-query
-https://dns.alidns.com/dns-query
-https://dns.ipv6dns.com/dns-query
-tls://dns.ipv6dns.com:853
-tls://dns.pub:853
-tls://doh.pub:853
-https://doh.pub/dns-query
-180.76.76.76
-119.29.29.29
-119.28.28.28
-https://dns.google/dns-query
-https://dns.quad9.net/dns-query
-https://dns11.quad9.net/dns-query
-https://dns.twnic.tw/dns-query
-https://1.1.1.1/dns-query
-https://1.0.0.1/dns-query
-https://cloudflare-dns.com/dns-query
-https://dns.adguard.com/dns-query
-https://doh.dns.sb/dns-query
-tls://185.184.222.222:853
-tls://185.222.222.222:853
-https://doh-jp.blahdns.com/dns-query
-https://public.dns.iij.jp/dns-query
-https://v6.rubyfish.cn/dns-query
-tls://v6.rubyfish.cn:853
-https://[2001:4860:4860::6464]/dns-query
-https://[2001:4860:4860::64]/dns-query
-https://[2606:4700:4700::1111]/dns-query
-https://[2606:4700:4700::64]/dns-query
-tls://2a09::@853
-tls://2a09::1@853
-203.112.2.4
-9.9.9.9
-101.101.101.101
-203.80.96.10
-218.102.23.228
-61.10.0.130
-202.181.240.44
-112.121.178.187
-168.95.192.1
-202.76.4.1
-202.14.67.4
-4.2.2.1
-4.2.2.2
-4.2.2.3
-4.2.2.4
-4.2.2.5
-4.2.2.6`
-
 type DnsClient struct {
-	dnsClientMap map[string]*net.Resolver
-	_lock        sync.RWMutex
+	dnsClientMap  map[string]*net.Resolver
+	jsonClientMap map[string]bool
+	apiClient     *resty.Client
+	_lock         sync.RWMutex
 }
 
 func NewDnsClient() *DnsClient {
 	return &DnsClient{
-		dnsClientMap: map[string]*net.Resolver{},
+		dnsClientMap:  map[string]*net.Resolver{},
+		jsonClientMap: map[string]bool{},
+		apiClient: resty.New().
+			SetTimeout(time.Second * 5).
+			SetRetryMaxWaitTime(time.Second * 5).
+			SetRetryWaitTime(time.Second),
 	}
 }
 
 func (p *DnsClient) Added(nameserver string) bool {
-	p._lock.RLock()
-	client := p.dnsClientMap[nameserver]
-	p._lock.RUnlock()
-	if client != nil {
+	if p.alreadyExist(nameserver) {
 		return false
 	}
 
-	if p.tryAddGetDoh(nameserver) {
+	if p.tryAddDoh(nameserver) {
 		return true
-	} else if p.tryAddGetDot(nameserver) {
+	} else if p.tryAddDot(nameserver) {
+		return true
+	} else if p.tryAddJSONApi(nameserver) {
 		return true
 	}
 
 	return false
 }
 
-func (p *DnsClient) tryAddGetDoh(nameserver string) bool {
+func (p *DnsClient) alreadyExist(nameserver string) bool {
+	p._lock.RLock()
+	defer p._lock.RUnlock()
+	_, ok := p.dnsClientMap[nameserver]
+	if ok {
+		return true
+	}
+	return p.jsonClientMap[nameserver]
+}
+
+func (p *DnsClient) tryAddDoh(nameserver string) bool {
 	client, err := dotDns.NewDoHResolver(nameserver)
 	if err != nil {
 		//pterm.Error.Printfln("try add %v err:%v", nameserver, err)
@@ -123,7 +77,7 @@ func (p *DnsClient) tryAddGetDoh(nameserver string) bool {
 	return true
 }
 
-func (p *DnsClient) tryAddGetDot(nameserver string) bool {
+func (p *DnsClient) tryAddDot(nameserver string) bool {
 	client, err := dotDns.NewDoTResolver(nameserver)
 	if err != nil {
 		//pterm.Error.Printfln("try add %v err:%v", nameserver, err)
@@ -137,6 +91,17 @@ func (p *DnsClient) tryAddGetDot(nameserver string) bool {
 	p._lock.Lock()
 	defer p._lock.Unlock()
 	p.dnsClientMap[nameserver] = client
+	return true
+}
+
+func (p *DnsClient) tryAddJSONApi(nameserver string) bool {
+	if len(p.lookupIPWithJsonApi(nameserver, "baidu.com")) == 0 {
+		return false
+	}
+
+	p._lock.Lock()
+	defer p._lock.Unlock()
+	p.jsonClientMap[nameserver] = true
 	return true
 }
 
@@ -159,6 +124,24 @@ func (p *DnsClient) lookupIPWithClient(client *net.Resolver, domain string) (ips
 	return
 }
 
+func (p *DnsClient) lookupIPWithJsonApi(nameserver string, domain string) (ips pie.Strings) {
+	if nameserver == "" {
+		return
+	}
+
+	_, err := p.apiClient.R().SetQueryParams(map[string]string{
+		"name":  domain,
+		"type":  "1",
+		"short": "1",
+	}).SetResult(&ips).Get(nameserver)
+	if err != nil {
+		pterm.Warning.Printfln("lookup err:%v", err)
+		return
+	}
+
+	return
+}
+
 func (p *DnsClient) LookupIPWithNameserver(nameserver, domain string) (ips pie.Strings) {
 	p._lock.RLock()
 	client := p.dnsClientMap[nameserver]
@@ -166,7 +149,7 @@ func (p *DnsClient) LookupIPWithNameserver(nameserver, domain string) (ips pie.S
 	return p.lookupIPWithClient(client, domain)
 }
 
-func (p *DnsClient) cloneClient() (ips map[string]*net.Resolver) {
+func (p *DnsClient) cloneDnsClient() (ips map[string]*net.Resolver) {
 	newClientMap := make(map[string]*net.Resolver)
 	p._lock.RLock()
 	defer p._lock.RUnlock()
@@ -176,22 +159,18 @@ func (p *DnsClient) cloneClient() (ips map[string]*net.Resolver) {
 	return newClientMap
 }
 
-func (p *DnsClient) LookupIP(domain string) (ips pie.Strings) {
-	newClientMap := p.cloneClient()
-	worker := factory.NewMaster(20, 8)
-	lineLookup := worker.AddLine(func(i interface{}) {
-		ips = append(ips, p.lookupIPWithClient(i.(*net.Resolver), domain)...)
-	})
-
-	for _, client := range newClientMap {
-		lineLookup.Submit(client)
+func (p *DnsClient) cloneJSONApi() (ips []string) {
+	p._lock.RLock()
+	defer p._lock.RUnlock()
+	for k := range p.jsonClientMap {
+		ips = append(ips, k)
 	}
-
-	return ips.Unique()
+	return
 }
 
 func (p *DnsClient) LookupIPFast(domain string) (ip string) {
-	newClientMap := p.cloneClient()
+	newClientMap := p.cloneDnsClient()
+	jsonApiList := p.cloneJSONApi()
 	worker := factory.NewMaster(8, 2)
 
 	var _lock sync.Mutex
@@ -214,7 +193,7 @@ func (p *DnsClient) LookupIPFast(domain string) (ip string) {
 		minIp = ip
 	})
 
-	lineLookup := worker.AddLine(func(i interface{}) {
+	lineDnsClient := worker.AddLine(func(i interface{}) {
 		ips := p.lookupIPWithClient(i.(*net.Resolver), domain)
 		ips.Each(func(ip string) {
 			_lock.Lock()
@@ -232,11 +211,34 @@ func (p *DnsClient) LookupIPFast(domain string) (ip string) {
 		})
 	})
 
+	lineJSONApi := worker.AddLine(func(i interface{}) {
+		ips := p.lookupIPWithJsonApi(i.(string), domain)
+		ips.Each(func(ip string) {
+			_lock.Lock()
+			ok := alreadyMap[ip]
+			if !ok {
+				alreadyMap[ip] = true
+				pterm.Info.Printfln("%v\t%v", domain, ip)
+			}
+			_lock.Unlock()
+			if ok {
+				return
+			}
+			linePing.Submit(ip)
+			pterm.Info.Printfln("add %v to test connectivity", ip)
+		})
+	})
+
 	for _, client := range newClientMap {
-		lineLookup.Submit(client)
+		lineDnsClient.Submit(client)
 	}
 
-	lineLookup.Wait()
+	for client := range jsonApiList {
+		lineJSONApi.Submit(client)
+	}
+
+	lineDnsClient.Wait()
+	lineJSONApi.Wait()
 	linePing.Wait()
 
 	return minIp
@@ -333,8 +335,10 @@ func main() {
 		client.Added(i.(string))
 	})
 
-	list := pie.Strings(strings.Split(text, "\n"))
-	list.Each(func(s string) {
+	dnsClientList.Each(func(s string) {
+		lineNameserver.Submit(s)
+	})
+	dnsJsonApiList.Each(func(s string) {
 		lineNameserver.Submit(s)
 	})
 

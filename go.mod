@@ -8,6 +8,7 @@ require (
 	github.com/cloverstd/tcping v0.1.1
 	github.com/elliotchance/pie v1.38.2
 	github.com/elliotchance/testify-stats v1.0.3 // indirect
+	github.com/go-resty/resty/v2 v2.6.0
 	github.com/letsfire/factory v0.0.0-20210521002528-a726b5f6a9b2
 	github.com/ncruces/go-dns v1.1.0
 	github.com/pterm/pterm v0.12.30
