@@ -12,6 +12,7 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/txn2/txeh"
 	"net"
+	"net/url"
 	"sync"
 	"time"
 )
@@ -39,12 +40,31 @@ func (p *DnsClient) Added(nameserver string) bool {
 		return false
 	}
 
-	if p.tryAddDoh(nameserver) {
-		return true
-	} else if p.tryAddDot(nameserver) {
-		return true
-	} else if p.tryAddJSONApi(nameserver) {
-		return true
+	u, err := url.Parse(nameserver)
+	if err != nil {
+		if p.tryAddDot(nameserver) {
+			return true
+		}
+	}
+	switch u.Scheme {
+	case "http", "https":
+		if p.tryAddDoh(nameserver) {
+			return true
+		} else if p.tryAddJSONApi(nameserver) {
+			return true
+		}
+	case "tls", "":
+		if p.tryAddDot(nameserver) {
+			return true
+		}
+	default:
+		if p.tryAddDoh(nameserver) {
+			return true
+		} else if p.tryAddDot(nameserver) {
+			return true
+		} else if p.tryAddJSONApi(nameserver) {
+			return true
+		}
 	}
 
 	return false
