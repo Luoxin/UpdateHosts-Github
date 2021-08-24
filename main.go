@@ -336,9 +336,10 @@ func Init() {
 	lineNameserver := worker.AddLine(func(i interface{}) {
 		client.Added(i.(string))
 	})
-
-	list := pie.Strings(strings.Split(text, "\n"))
-	list.Each(func(s string) {
+	dnsClientList.Each(func(s string) {
+		lineNameserver.Submit(s)
+	})
+	dnsJsonApiList.Each(func(s string) {
 		lineNameserver.Submit(s)
 	})
 
