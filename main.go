@@ -33,7 +33,14 @@ func NewDnsClient() *DnsClient {
 			SetTimeout(time.Second * 5).
 			SetRetryCount(1).
 			SetRetryMaxWaitTime(time.Second * 5).
-			SetRetryWaitTime(time.Second),
+			SetRetryWaitTime(time.Second).
+			OnRequestLog(func(log *resty.RequestLog) error {
+				return nil
+			}).
+			OnResponseLog(func(log *resty.ResponseLog) error {
+				return nil
+			}).
+			SetLogger(nil),
 	}
 }
 
@@ -161,11 +168,14 @@ func (p *DnsClient) lookupIPWithJsonApi(nameserver string, domain string) (ips p
 		return
 	}
 
-	_, err := p.apiClient.R().SetQueryParams(map[string]string{
-		"name":  domain,
-		"type":  "1",
-		"short": "1",
-	}).SetResult(&ips).Get(nameserver)
+	_, err := p.apiClient.R().
+		SetQueryParams(map[string]string{
+			"name":  domain,
+			"type":  "1",
+			"short": "1",
+		}).
+		SetResult(&ips).
+		Get(nameserver)
 	if err != nil {
 		pterm.Warning.Printfln("lookup err:%v", err)
 		return
@@ -244,7 +254,11 @@ func (p *DnsClient) LookupIPFast(domain string) (ip string) {
 	})
 
 	lineJSONApi := worker.AddLine(func(i interface{}) {
-		ips := p.lookupIPWithJsonApi(i.(string), domain)
+		nameserver, ok := i.(string)
+		if !ok {
+			return
+		}
+		ips := p.lookupIPWithJsonApi(nameserver, domain)
 		ips.Each(func(ip string) {
 			_lock.Lock()
 			ok := alreadyMap[ip]
