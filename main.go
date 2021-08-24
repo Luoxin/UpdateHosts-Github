@@ -168,18 +168,15 @@ func (p *DnsClient) lookupIPWithJsonApi(nameserver string, domain string) (ips p
 		return
 	}
 
-	_, err := p.apiClient.R().
-		SetQueryParams(map[string]string{
-			"name":  domain,
-			"type":  "1",
-			"short": "1",
-		}).
-		SetResult(&ips).
-		Get(nameserver)
-	if err != nil {
-		pterm.Warning.Printfln("lookup err:%v", err)
-		return
-	}
+	//_, err := p.apiClient.R().SetQueryParams(map[string]string{
+	//	"name":  domain,
+	//	"type":  "1",
+	//	"short": "1",
+	//}).SetResult(&ips).Get(nameserver)
+	//if err != nil {
+	//	pterm.Warning.Printfln("lookup err:%v", err)
+	//	return
+	//}
 
 	return
 }
