@@ -13,6 +13,7 @@ import (
 	"github.com/txn2/txeh"
 	"net"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 )
@@ -30,6 +31,7 @@ func NewDnsClient() *DnsClient {
 		jsonClientMap: map[string]bool{},
 		apiClient: resty.New().
 			SetTimeout(time.Second * 5).
+			SetRetryCount(1).
 			SetRetryMaxWaitTime(time.Second * 5).
 			SetRetryWaitTime(time.Second),
 	}
@@ -48,10 +50,20 @@ func (p *DnsClient) Added(nameserver string) bool {
 	}
 	switch u.Scheme {
 	case "http", "https":
-		if p.tryAddDoh(nameserver) {
-			return true
-		} else if p.tryAddJSONApi(nameserver) {
-			return true
+		if strings.HasSuffix(nameserver, "resolve") {
+			if p.tryAddJSONApi(nameserver) {
+				return true
+			}
+		} else if strings.HasSuffix(nameserver, "dns-query") {
+			if p.tryAddDoh(nameserver) {
+				return true
+			}
+		} else {
+			if p.tryAddDoh(nameserver) {
+				return true
+			} else if p.tryAddJSONApi(nameserver) {
+				return true
+			}
 		}
 	case "tls", "":
 		if p.tryAddDot(nameserver) {
