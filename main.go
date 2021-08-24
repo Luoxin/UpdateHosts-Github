@@ -387,12 +387,6 @@ func main() {
 	case "run":
 		Init()
 		UpdateHosts()
-		for {
-			select {
-			case <- time.After():
-
-			}
-		}
 	default:
 		Init()
 		UpdateHosts()
