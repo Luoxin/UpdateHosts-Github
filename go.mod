@@ -12,5 +12,6 @@ require (
 	github.com/letsfire/factory v0.0.0-20210521002528-a726b5f6a9b2
 	github.com/ncruces/go-dns v1.1.0
 	github.com/pterm/pterm v0.12.30
+	github.com/spf13/viper v1.8.0
 	github.com/txn2/txeh v1.3.0
 )

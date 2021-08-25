@@ -1,10 +1,6 @@
 package main
 
-import (
-	"github.com/elliotchance/pie/pie"
-)
-
-var dnsClientList = pie.Strings{
+var dnsClientList = []string{
 	"23.106.151.177",
 	"208.67.222.222",
 	"4.2.2.3",
@@ -756,7 +752,7 @@ var dnsClientList = pie.Strings{
 	"https://dns.arapurayil.com/dns-query",
 }
 
-var dnsJsonApiList = pie.Strings{
+var dnsJsonApiList = []string{
 	"https://223.5.5.5/resolve",
 	"https://223.6.6.6/resolve",
 	"https://dns.alidns.com/resolve",

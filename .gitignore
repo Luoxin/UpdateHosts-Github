@@ -1099,3 +1099,5 @@ dist/
 .vcode/
 sync.sh
 .env
+
+config.yaml

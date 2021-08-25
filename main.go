@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"fmt"
 	"github.com/Luoxin/Eutamias/utils"
 	"github.com/alexflint/go-arg"
 	"github.com/cloverstd/tcping/ping"
@@ -11,6 +12,7 @@ import (
 	"github.com/letsfire/factory"
 	dotDns "github.com/ncruces/go-dns"
 	"github.com/pterm/pterm"
+	"github.com/spf13/viper"
 	"github.com/txn2/txeh"
 	"io/ioutil"
 	"net"
@@ -367,46 +369,11 @@ func (p *DnsClient) Check(doamin, ip string) time.Duration {
 	// tcp ping
 }
 
-var githubList = pie.Strings{
-	"alive.github.com",
-	"live.github.com",
-	"github.githubassets.com",
-	"central.github.com",
-	"desktop.githubusercontent.com",
-	"assets-cdn.github.com",
-	"camo.githubusercontent.com",
-	"github.map.fastly.net",
-	"github.global.ssl.fastly.net",
-	"gist.github.com",
-	"github.io",
-	"github.com",
-	"github.blog",
-	"api.github.com",
-	"raw.githubusercontent.com",
-	"user-images.githubusercontent.com",
-	"favicons.githubusercontent.com",
-	"avatars5.githubusercontent.com",
-	"avatars4.githubusercontent.com",
-	"avatars3.githubusercontent.com",
-	"avatars2.githubusercontent.com",
-	"avatars1.githubusercontent.com",
-	"avatars0.githubusercontent.com",
-	"avatars.githubusercontent.com",
-	"codeload.github.com",
-	"github-cloud.s3.amazonaws.com",
-	"github-com.s3.amazonaws.com",
-	"github-production-release-asset-2e65be.s3.amazonaws.com",
-	"github-production-user-asset-6210df.s3.amazonaws.com",
-	"github-production-repository-file-5c1aeb.s3.amazonaws.com",
-	"githubstatus.com",
-	"github.community",
-	"media.githubusercontent.com",
-}
-
 var cmdArgs struct {
-	HostsFile string `arg:"-h,--hosts" help:"hosts file path"`
-	NotRemove bool   `arg:"-r,--not-remove" help:"not remove all old hosts"`
-	Action    string `arg:"-a,--action" help:""`
+	HostsFile      string `arg:"-h,--hosts" help:"hosts file path"`
+	ConfigFilePath string `arg:"-c,--config" help:"config file path"`
+	NotRemove      bool   `arg:"-r,--not-remove" help:"not remove all old hosts"`
+	Action         string `arg:"-a,--action" help:""`
 }
 
 var client *DnsClient
@@ -419,12 +386,12 @@ func Init() {
 	lineNameserver := worker.AddLine(func(i interface{}) {
 		client.Added(i.(string))
 	})
-	dnsClientList.Each(func(s string) {
-		lineNameserver.Submit(s)
-	})
-	dnsJsonApiList.Each(func(s string) {
-		lineNameserver.Submit(s)
-	})
+
+	pie.Strings(viper.GetStringSlice("dns_nameserver")).
+		Unique().
+		Each(func(s string) {
+			lineNameserver.Submit(s)
+		})
 
 	lineNameserver.Wait()
 }
@@ -449,29 +416,21 @@ func UpdateHosts() {
 		}
 	}
 
+	domainList := pie.Strings(viper.GetStringSlice("domain_list"))
+	if viper.GetBool("use_default_domain") {
+		domainList = append(domainList, githubList...)
+	}
+	domainList = domainList.Unique()
+	fmt.Println(domainList)
+	return
 	if !cmdArgs.NotRemove {
-		hosts.RemoveHosts(githubList)
+		hosts.RemoveHosts(domainList)
 	}
 
 	worker := factory.NewMaster(8, 2)
 
 	var _lock sync.Mutex
 	hostMap := map[string]string{}
-	client := NewDnsClient()
-
-	lineNameserver := worker.AddLine(func(i interface{}) {
-		client.Added(i.(string))
-	})
-
-	dnsClientList.Each(func(s string) {
-		lineNameserver.Submit(s)
-	})
-	dnsJsonApiList.Each(func(s string) {
-		lineNameserver.Submit(s)
-	})
-
-	lineNameserver.Wait()
-
 	lineQuery := worker.AddLine(func(i interface{}) {
 		domain := i.(string)
 		fastIp := client.LookupIPFast(domain)
@@ -485,7 +444,7 @@ func UpdateHosts() {
 			pterm.Warning.Printfln("%v not found fast ip", domain)
 		}
 	})
-	githubList.Each(func(domain string) {
+	domainList.Each(func(domain string) {
 		lineQuery.Submit(domain)
 	})
 	lineQuery.Wait()
@@ -508,6 +467,10 @@ func UpdateHosts() {
 func main() {
 	arg.MustParse(&cmdArgs)
 
+	err := LoadConfig(cmdArgs.ConfigFilePath)
+	if err != nil {
+		return
+	}
 	switch cmdArgs.Action {
 	case "run":
 		Init()
