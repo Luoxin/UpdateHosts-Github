@@ -52,6 +52,8 @@ func (p *DnsClient) Added(nameserver string) bool {
 		return false
 	}
 
+	pterm.Info.Printfln("try add dns nameserver %v", nameserver)
+
 	u, err := url.Parse(nameserver)
 	if err != nil {
 		if p.tryAddDot(nameserver) {
