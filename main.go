@@ -296,6 +296,7 @@ func (p *DnsClient) Check(doamin, ip string) time.Duration {
 		Interval: time.Second,
 		Host:     ip,
 		Counter:  5,
+		Port:     443,
 		Protocol: ping.HTTPS,
 	}
 
