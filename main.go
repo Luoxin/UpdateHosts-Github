@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"crypto/tls"
-	"fmt"
 	"github.com/Luoxin/Eutamias/utils"
 	"github.com/alexflint/go-arg"
 	"github.com/cloverstd/tcping/ping"
@@ -421,8 +420,6 @@ func UpdateHosts() {
 		domainList = append(domainList, githubList...)
 	}
 	domainList = domainList.Unique()
-	fmt.Println(domainList)
-	return
 	if !cmdArgs.NotRemove {
 		hosts.RemoveHosts(domainList)
 	}
