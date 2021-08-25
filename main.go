@@ -2,16 +2,18 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"github.com/Luoxin/Eutamias/utils"
 	"github.com/alexflint/go-arg"
-	"github.com/cloverstd/tcping/ping"
 	"github.com/elliotchance/pie/pie"
 	"github.com/go-resty/resty/v2"
 	"github.com/letsfire/factory"
 	dotDns "github.com/ncruces/go-dns"
 	"github.com/pterm/pterm"
 	"github.com/txn2/txeh"
+	"io/ioutil"
 	"net"
+	"net/http"
 	"net/url"
 	"strings"
 	"sync"
@@ -221,7 +223,7 @@ func (p *DnsClient) LookupIPFast(domain string) (ip string) {
 
 	linePing := worker.AddLine(func(i interface{}) {
 		ip := i.(string)
-		delay := p.Ping(ip)
+		delay := p.Check(domain, ip)
 		pterm.Info.Printfln("%v\t%v", i, delay)
 		_lock.Lock()
 		defer _lock.Unlock()
@@ -287,25 +289,78 @@ func (p *DnsClient) LookupIPFast(domain string) (ip string) {
 	return minIp
 }
 
-func (p *DnsClient) Ping(ip string) time.Duration {
-	target := ping.Target{
-		Timeout:  time.Second,
-		Interval: time.Second,
-		Host:     ip,
-		Port:     80,
-		Counter:  1,
-		Protocol: ping.HTTPS,
+func (p *DnsClient) Check(doamin, ip string) time.Duration {
+	req, err := http.NewRequest(http.MethodGet, "https://"+doamin, nil)
+	if err != nil {
+		pterm.Error.Printfln("err:%v", err)
+		return -1
+	}
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.159 Safari/537.36")
+
+	dialer := &net.Dialer{
+		Timeout:   5 * time.Second,
+		KeepAlive: 5 * time.Second,
 	}
 
-	pinger := ping.NewTCPing()
-	pinger.SetTarget(&target)
-	pingerDone := pinger.Start()
-	<-pingerDone
-	if pinger.Result().Failed() >= 1 {
+	client := http.Client{
+		Transport: &http.Transport{
+			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+				addr = ip + ":443"
+				return dialer.DialContext(ctx, network, addr)
+			},
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: false,
+			},
+			DisableKeepAlives:  true,
+			DisableCompression: true,
+		},
+		Timeout: time.Second * 5,
+	}
+
+	start := time.Now()
+	resp, err := client.Do(req)
+	if err != nil {
+		pterm.Error.Printfln("err:%v", err)
+		return -1
+	}
+	defer resp.Body.Close()
+	_, err = ioutil.ReadAll(resp.Body)
+	if err != nil {
+		pterm.Error.Printfln("err:%v", err)
 		return -1
 	}
 
-	return pinger.Result().Avg()
+	delay := time.Since(start)
+
+	//var speed float64
+	//if resp.ContentLength > 0 {
+	//	speed = float64(resp.ContentLength) / float64(delay.Milliseconds())
+	//} else {
+	//	speed = float64(len(body)) / float64(delay.Milliseconds())
+	//}
+
+	//fmt.Println(speed)
+
+	return delay
+	// tcp ping
+	//target := ping.Target{
+	//	Timeout:  time.Second,
+	//	Interval: time.Second,
+	//	Host:     ip,
+	//	Port:     80,
+	//	Counter:  1,
+	//	Protocol: ping.HTTPS,
+	//}
+	//
+	//pinger := ping.NewTCPing()
+	//pinger.SetTarget(&target)
+	//pingerDone := pinger.Start()
+	//<-pingerDone
+	//if pinger.Result().Failed() >= 1 {
+	//	return -1
+	//}
+	//
+	//return pinger.Result().Avg()
 }
 
 var githubList = pie.Strings{
