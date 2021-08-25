@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"github.com/Luoxin/Eutamias/utils"
 	"github.com/alexflint/go-arg"
+	"github.com/cloverstd/tcping/ping"
 	"github.com/elliotchance/pie/pie"
 	"github.com/go-resty/resty/v2"
 	"github.com/letsfire/factory"
@@ -290,6 +291,24 @@ func (p *DnsClient) LookupIPFast(domain string) (ip string) {
 }
 
 func (p *DnsClient) Check(doamin, ip string) time.Duration {
+	target := ping.Target{
+		Timeout:  time.Second,
+		Interval: time.Second,
+		Host:     ip,
+		Counter:  5,
+		Protocol: ping.HTTPS,
+	}
+
+	pinger := ping.NewTCPing()
+	pinger.SetTarget(&target)
+	pingerDone := pinger.Start()
+	<-pingerDone
+	if pinger.Result().Failed() > 0 {
+		return -1
+	}
+
+	//return pinger.Result().Avg()
+
 	req, err := http.NewRequest(http.MethodGet, "https://"+doamin, nil)
 	if err != nil {
 		pterm.Error.Printfln("err:%v", err)
@@ -343,24 +362,6 @@ func (p *DnsClient) Check(doamin, ip string) time.Duration {
 
 	return delay
 	// tcp ping
-	//target := ping.Target{
-	//	Timeout:  time.Second,
-	//	Interval: time.Second,
-	//	Host:     ip,
-	//	Port:     80,
-	//	Counter:  1,
-	//	Protocol: ping.HTTPS,
-	//}
-	//
-	//pinger := ping.NewTCPing()
-	//pinger.SetTarget(&target)
-	//pingerDone := pinger.Start()
-	//<-pingerDone
-	//if pinger.Result().Failed() >= 1 {
-	//	return -1
-	//}
-	//
-	//return pinger.Result().Avg()
 }
 
 var githubList = pie.Strings{

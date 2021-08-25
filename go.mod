@@ -5,6 +5,7 @@ go 1.16
 require (
 	github.com/Luoxin/Eutamias v0.0.4
 	github.com/alexflint/go-arg v1.4.2
+	github.com/cloverstd/tcping v0.1.1
 	github.com/elliotchance/pie v1.38.2
 	github.com/elliotchance/testify-stats v1.0.3 // indirect
 	github.com/go-resty/resty/v2 v2.6.0
