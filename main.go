@@ -403,6 +403,7 @@ var githubList = pie.Strings{
 
 var cmdArgs struct {
 	HostsFile string `arg:"-h,--hosts" help:"hosts file path"`
+	NotRemove bool   `arg:"-r,--not-remove" help:"not remove all old hosts"`
 	Action    string `arg:"-a,--action" help:""`
 }
 
@@ -444,6 +445,10 @@ func UpdateHosts() {
 			pterm.Error.Printfln("err:%v", err)
 			return
 		}
+	}
+
+	if !cmdArgs.NotRemove {
+		hosts.RemoveHosts(githubList)
 	}
 
 	worker := factory.NewMaster(8, 2)
