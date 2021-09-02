@@ -213,7 +213,7 @@ func (p *DnsClient) cloneJSONApi() (ips []string) {
 	return
 }
 
-func (p *DnsClient) LookupIPFast(domain string) (ip string) {
+func (p *DnsClient) LookupIPUsable(domain string) (usableIps pie.Strings) {
 	newClientMap := p.cloneDnsClient()
 	jsonApiList := p.cloneJSONApi()
 	worker := factory.NewMaster(8, 2)
@@ -222,20 +222,22 @@ func (p *DnsClient) LookupIPFast(domain string) (ip string) {
 
 	alreadyMap := map[string]bool{}
 
-	var minIp string
-	var minDelay = time.Duration(-1)
+	var checkResult DnsLookupResultList
 
 	linePing := worker.AddLine(func(i interface{}) {
 		ip := i.(string)
 		delay := p.Check(domain, ip)
 		pterm.Info.Printfln("%v\t%v", i, delay)
-		_lock.Lock()
-		defer _lock.Unlock()
-		if delay <= minDelay && minDelay >= 0 {
+		if delay < 0 {
 			return
 		}
-		minDelay = delay
-		minIp = ip
+
+		_lock.Lock()
+		defer _lock.Unlock()
+		checkResult = append(checkResult, &DnsLookupResult{
+			Ip:    ip,
+			Delay: delay,
+		})
 	})
 
 	lineDnsClient := worker.AddLine(func(i interface{}) {
@@ -290,7 +292,16 @@ func (p *DnsClient) LookupIPFast(domain string) (ip string) {
 	lineJSONApi.Wait()
 	linePing.Wait()
 
-	return minIp
+	checkResult.
+		SortUsing(func(a, b *DnsLookupResult) bool {
+			return a.Delay > b.Delay
+		}).
+		Top(1).
+		Each(func(result *DnsLookupResult) {
+			usableIps = append(usableIps, result.Ip)
+		})
+
+	return
 }
 
 func (p *DnsClient) Check(doamin, ip string) time.Duration {
@@ -427,27 +438,33 @@ func UpdateHosts() {
 	worker := factory.NewMaster(8, 2)
 
 	var _lock sync.Mutex
-	hostMap := map[string]string{}
+	var hostList [][]string
 	lineQuery := worker.AddLine(func(i interface{}) {
 		domain := i.(string)
-		fastIp := client.LookupIPFast(domain)
-		if fastIp != "" {
-			pterm.Info.Printfln("fastest: %v\t%v", domain, fastIp)
-			hosts.AddHost(fastIp, domain)
-			_lock.Lock()
-			hostMap[domain] = fastIp
-			_lock.Unlock()
-		} else {
-			pterm.Warning.Printfln("%v not found fast ip", domain)
+		usableIps := client.LookupIPUsable(domain)
+		if len(usableIps) == 0 {
+			pterm.Warning.Printfln("%v not found usable ip", domain)
+			return
 		}
+
+		//pterm.Info.Printfln("fastest: %v\t%v", domain, fastIp)
+
+		usableIps.Each(func(ip string) {
+			hosts.AddHost(ip, domain)
+			_lock.Lock()
+			defer _lock.Unlock()
+			hostList = append(hostList, []string{
+				ip, domain,
+			})
+		})
 	})
 	domainList.Each(func(domain string) {
 		lineQuery.Submit(domain)
 	})
 	lineQuery.Wait()
 
-	for doamin, ip := range hostMap {
-		pterm.Printfln("%s\t%s", ip, doamin)
+	for _, host := range hostList {
+		pterm.Printfln("%s\t%s", host[0], host[1])
 	}
 
 	if cmdArgs.HostsFile != "" {
