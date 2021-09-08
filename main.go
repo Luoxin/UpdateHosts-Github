@@ -60,6 +60,7 @@ func (p *DnsClient) Added(nameserver string) bool {
 		if p.tryAddDot(nameserver) {
 			return true
 		}
+		return false
 	}
 	switch u.Scheme {
 	case "http", "https":
